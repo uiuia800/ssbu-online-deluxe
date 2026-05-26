@@ -1,9 +1,9 @@
 # SSBU Online Deluxe (Beta)
 
-A performance and networking enhancement mod for **Super Smash Bros. Ultimate** that introduces latency controls, render optimizations, and real-time online information.
+A performance and online enhancement mod for **Super Smash Bros. Ultimate** that introduces latency controls, render optimizations, and real-time online information.
 
-> ⚠️ This is a **beta release**. Features and stability may change as development continues.
-> ⚠️ Use at your own risk. I have been testing this mod online personally without any major issues, but there is still a non-zero risk of a ban. The overclocks are intentionally minimal; however, any hardware damage or account penalties remain your responsibility.
+> ⚠️ This is a **beta release**. Features and stability may change as development continues.  
+> ⚠️ Use at your own risk. I have been testing this mod online personally without any major issues, but there is still a non-zero risk of a ban. The overclocks are intentionally minimal; however, any hardware damage or account penalties remain your responsibility.  
 
 ## 🚧 Status
 
@@ -19,6 +19,8 @@ This mod is currently in beta. The codebase will be cleaned up and published soo
 
 ## 📦 Installation
 
+
+- Remove any previous latency slider mod, vsync mod, and less lag mod:
 - Download and extract the zip from the releases, then:
 
 - Console:
@@ -27,7 +29,9 @@ This mod is currently in beta. The codebase will be cleaned up and published soo
 
 - Emulator:
   - Copy the `atmosphere` folder to `%EDEN_FOLDER%/sdmc`. (Replace `%EDEN_FOLDER%` with whereever your eden folder is located)
-  - Delete `lbnx_over.nro` from the `romfs` folder
+  - Delete `libnx_over.nro` from the `romfs` folder
+
+> ⚠️ The latest skyline currently causes a crash. Use the skyline files bundled in with the release zip.  
 
 ## 🎮 Controls
 
@@ -50,9 +54,9 @@ Cycles through:
 ## ✨ Features
 
 ### 🌐 Online Enhancements
-- Display **opponent ping** in all online modes (including Elite Smash)
+- Display **opponent ping** in all online modes (including Elite Smash):
+  - Network RTT (ping) / connection quality
 - Show **extended opponent info** *(only if both players have the mod)*:
-  - Network latency / connection quality  
   - Opponent’s current network/render settings (latency slider, buffer mode, vsync status, etc.)
 
 ### 🎛️ Online Latency Controls
@@ -64,7 +68,7 @@ Cycles through:
 ### 🎛️ Render Optimizations Controls (for less input latency)
 *(Available in Offline, Online Arena and Local Online modes only)*
 
-**I would highly recommend you these options as is. The best settings are already applied automatically when entering/exiting a valid online match. These are for those who want to experiment and try out different settings**
+**I would highly recommend you to leave these options as is. The best settings are already applied automatically when entering/exiting a valid online match. These are for those who want to experiment and try out different settings**
 - Adjust:
   - Buffer Mode
     - Triple (vanilla) => less frame drops, more stable, higher latency
@@ -83,7 +87,7 @@ Cycles through:
     - Enabled (recommended for online) => dynamically lower resolution on intensive moves/effects to keep framerate stable
     - Disabled (vanilla)
   - Default Resolution:
-    - baseline resolution of ssbu. Lower means less frame drops.
+    - baseline resolution of ssbu. Lower means less frame drops. Ui elements on menus look wonky on everything except 720p and 1080p. In game, however, looks fine on any resolution.
 
 Recommended for offline:
   - triple buffer, index 2 behind, vsync enabled, render opts disabled, dynamic res disabled, default res 1920x1080p
@@ -99,9 +103,15 @@ Recommended for emulator online:
 - Reverts to **vanilla settings** after exiting
 
 > ⚠️ **Important:**  
-> If you want to test custom settings, make sure to change them **after the online match starts**.
-> Any settings configured before entering a valid match will be **overwritten by the automatic optimization**.
-> Setting up automatic profiles for online/offline matches may be addressed in a future update
+> If you want to test custom settings, make sure to change them **after the online match starts**.  
+> Any settings configured before entering a valid match will be **overwritten by the automatic optimization**.  
+> Setting up automatic profiles for online/offline matches may be addressed in a future update.  
+
+## 📝 Notes
+
+The dynamic resolution logic currently only applies to zoom in moves (final hit/critical hit) and Sephiroth's gigaflare.  
+I don't know if I'll have time to optimize every single move, but eventually when the codebase is published, developers can use ultelier's new Resolution API to contribute and optimize specific moves.  
+See here for information on [ultelier](https://github.com/project-ultelier/smash-ultelier).  
 
 ## 🙌 Credits
 
@@ -110,9 +120,9 @@ Huge thanks to the following people who made this possible. Without these people
 - **Bludev**
   For the intial SSBU render system research and the less-lag mod
 
-- **BlankMausser**
-  Creator of the SsbuSync mod, which this mod uses to modify ssbu's render system.
-  BlanksMausser's work and guidance on SSBU’s rendering internals were critical to making this mod possible.
+- **BlankMauser**
+  Creator of the SsbuSync and smash-ultelier mod, which this mod uses to modify ssbu's render system.
+  BlanksMauser's work and guidance on SSBU’s rendering internals were critical to making this mod possible.
 
 - **Kinnay** & contributors of the NintendoClients repo/wiki
   For guidance on network service implementation. The network service wouldn't have been possible if not for the incredible efforts of these people.
