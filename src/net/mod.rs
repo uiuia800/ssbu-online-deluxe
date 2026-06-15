@@ -174,18 +174,18 @@ pub fn is_in_valid_online_game() -> bool {
     is_valid_online_mode() && is_in_game() && is_connected()
 }
 
-#[skyline::hook(offset = 0x25d8e00)]
-unsafe fn on_stage_presetup(stage_base: u64) {
-    call_original!(stage_base);
-
+#[skyline::hook(offset = 0x25d8e18, inline)]
+unsafe fn on_stage_presetup(ctx: &InlineCtx) {
+    let stage_base = ctx.registers[0].x();
     let stage_id = *((stage_base + 8) as *mut u32);
+
+    println!("STAGE PRESETUP: STAGE_ID={}", stage_id);
 
     // result stage (normal) == 310
     // result stage (sephiroth) == 354
     let is_result_stage = stage_id == 310 || stage_id == 354;
     if is_result_stage {
         update_in_game_flag(false);
-        println!("MATCH END");
         return;
     }
 
@@ -197,7 +197,6 @@ unsafe fn on_stage_presetup(stage_base: u64) {
     }
 
     update_in_game_flag(true);
-    println!("MATCH START: STAGE_ID={}", stage_id);
 }
 
 //result stage ui
