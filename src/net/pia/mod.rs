@@ -12,7 +12,7 @@ use ssbu_pia_interface::{
 
 use crate::{
     net::{
-        is_in_game,
+        is_in_real_game,
         latency_slider::{Latency, LATENCY_SLIDER_MANAGER},
     },
     render::profile::{RenderProfile, RenderProfileSettings, RENDER_PROFILE_MANAGER},
@@ -122,7 +122,7 @@ fn send_pia_data_hook(_station: ConnectedStation, data: &mut [u8]) {
         .active_latency()
         .unwrap_or(LATENCY_SLIDER_MANAGER.selected_latency())
         .to_bits();
-    let rps_bits = match is_in_game() {
+    let rps_bits = match is_in_real_game() {
         false => RENDER_PROFILE_MANAGER.selected_render_profile_settings(),
         true => RENDER_PROFILE_MANAGER.active_render_profile_settings(),
     }

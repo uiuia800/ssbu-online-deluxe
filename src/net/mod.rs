@@ -2,14 +2,12 @@ pub mod latency_slider;
 pub mod ldn;
 pub mod pia;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 use crate::net::ldn::interface::{get_network_role, NetworkRole};
-use crate::utils::is_emulator;
 use skyline::hooks::InlineCtx;
 use skyline::nn::ui2d::Pane;
 use ssbu_pia_interface::StationConnectionManager;
-use ultelier::sync_guest;
 
 static mut LOCAL_ONLINE_CSS_NUM_PANES_ADJUSTED: bool = false;
 static mut CURRENT_ARENA_ID: String = String::new();
@@ -17,14 +15,32 @@ static mut CURRENT_ARENA_ID: String = String::new();
 static ONLINE_ARENA_PANE_HANDLE: AtomicU64 = AtomicU64::new(0);
 static LOCAL_ROOM_PANE_HANDLE: AtomicU64 = AtomicU64::new(0);
 
-static IN_GAME: AtomicBool = AtomicBool::new(false);
+static MATCH_FLAG: AtomicU8 = AtomicU8::new(MatchFlag::Inactive as u8);
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchFlag {
+    Inactive = 0,
+    Singles = 1,
+    Doubles = 2,
+    Training = 3,
+}
+
+extern "C" {
+    #[link_name = "\u{1}_ZN3app9smashball16is_training_modeEv"]
+    pub fn is_training_mode() -> bool;
+}
+extern "C" {
+    #[link_name = "\u{1}_ZN3app7fighter23get_fighter_entry_countEv"]
+    pub fn get_fighter_entry_count() -> i32;
+}
 
 #[skyline::hook(offset = 0x22d9d10, inline)]
 unsafe fn online_melee_any_scene_create(_: &InlineCtx) {
     println!("ONLINE ELITE INIT");
     LOCAL_ROOM_PANE_HANDLE.store(0, Ordering::SeqCst);
     ONLINE_ARENA_PANE_HANDLE.store(0, Ordering::SeqCst);
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
 }
 
 #[skyline::hook(offset = 0x22d9c40, inline)]
@@ -32,7 +48,7 @@ unsafe fn bg_matchmaking_seq(_: &InlineCtx) {
     println!("ONLINE BG MM INIT");
     LOCAL_ROOM_PANE_HANDLE.store(0, Ordering::SeqCst);
     ONLINE_ARENA_PANE_HANDLE.store(0, Ordering::SeqCst);
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
 }
 
 #[skyline::hook(offset = 0x235a650, inline)]
@@ -40,7 +56,7 @@ unsafe fn main_menu(_: &InlineCtx) {
     println!("MAIN MENU INIT");
     LOCAL_ROOM_PANE_HANDLE.store(0, Ordering::SeqCst);
     ONLINE_ARENA_PANE_HANDLE.store(0, Ordering::SeqCst);
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
 }
 
 #[skyline::hook(offset = 0x22d9cf4, inline)]
@@ -66,18 +82,18 @@ unsafe fn online_arena_set_room_id(ctx: &skyline::hooks::InlineCtx) {
         5,
     ))
     .unwrap();
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
 }
 
 // called on local online menu init
 #[skyline::hook(offset = 0x1bd45e0, inline)]
 unsafe fn store_local_menu_pane(ctx: &InlineCtx) {
     println!("LOCAL ONLINE INIT");
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
     LOCAL_ONLINE_CSS_NUM_PANES_ADJUSTED = false;
     let handle = *((*((ctx.registers[0].x() + 8) as *const u64) + 0x10) as *const u64);
     LOCAL_ROOM_PANE_HANDLE.store(handle, Ordering::SeqCst);
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
 }
 
 #[skyline::hook(offset = 0x1bd7a80, inline)]
@@ -98,7 +114,7 @@ unsafe fn css_player_pane_num_changed(param_1: i64, prev_num: i32, changed_by_pl
         LOCAL_ONLINE_CSS_NUM_PANES_ADJUSTED = true;
         *((param_1 + 0x160) as *mut i32) = 2;
     }
-    update_in_game_flag(false);
+    update_match_flag(MatchFlag::Inactive);
     call_original!(param_1, prev_num, changed_by_player);
 }
 
@@ -112,26 +128,13 @@ unsafe fn update_css(arg: u64) {
     call_original!(arg);
 }
 
-fn update_in_game_flag(new_in_game_flag: bool) {
-    if IN_GAME
-        .compare_exchange(
-            !new_in_game_flag,
-            new_in_game_flag,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        )
-        .is_ok()
-    {
-        println!("UPDATE IN GAME STATUS: {}", new_in_game_flag);
-        if new_in_game_flag {
-            if is_connected() && is_valid_online_mode() {
-                crate::render::profile::match_init();
-                crate::perf_scaler::match_init();
-            } else {
-                if !is_emulator() {
-                    sync_guest::profile::apply_singles();
-                }
-            }
+fn update_match_flag(match_flag: MatchFlag) {
+    let prev = MATCH_FLAG.swap(match_flag as u8, Ordering::SeqCst);
+    if prev != match_flag as u8 {
+        println!("UPDATE MATCH FLAG: {:?}", match_flag);
+        if match_flag != MatchFlag::Inactive {
+            crate::render::profile::match_init();
+            crate::perf_scaler::match_init();
         } else {
             latency_slider::match_cleanup();
             crate::render::profile::match_cleanup();
@@ -166,12 +169,34 @@ pub fn is_connected() -> bool {
 
 #[inline]
 pub fn is_in_game() -> bool {
-    IN_GAME.load(Ordering::SeqCst)
+    MATCH_FLAG.load(Ordering::SeqCst) != MatchFlag::Inactive as u8
+}
+
+#[inline]
+pub fn is_in_training_game() -> bool {
+    let match_flag = MATCH_FLAG.load(Ordering::SeqCst);
+    match_flag == MatchFlag::Training as u8
+}
+
+#[inline]
+pub fn is_in_real_game() -> bool {
+    let match_flag = MATCH_FLAG.load(Ordering::SeqCst);
+    match_flag == MatchFlag::Singles as u8 || match_flag == MatchFlag::Doubles as u8
+}
+
+#[inline]
+pub fn get_match_flag() -> MatchFlag {
+    match MATCH_FLAG.load(Ordering::SeqCst) {
+        1 => MatchFlag::Singles,
+        2 => MatchFlag::Doubles,
+        3 => MatchFlag::Training,
+        _ => MatchFlag::Inactive,
+    }
 }
 
 #[inline]
 pub fn is_in_valid_online_game() -> bool {
-    is_valid_online_mode() && is_in_game() && is_connected()
+    is_valid_online_mode() && is_in_real_game() && is_connected()
 }
 
 #[skyline::hook(offset = 0x25d8e18, inline)]
@@ -179,24 +204,34 @@ unsafe fn on_stage_presetup(ctx: &InlineCtx) {
     let stage_base = ctx.registers[0].x();
     let stage_id = *((stage_base + 8) as *mut u32);
 
-    println!("STAGE PRESETUP: STAGE_ID={}", stage_id);
+    let is_training_mode = is_training_mode();
+    let is_waiting_room_stage = stage_id == 311;
+
+    println!(
+        "STAGE PRESETUP: STAGE_ID={}, IS_TRAINING_MODE={}",
+        stage_id, is_training_mode
+    );
 
     // result stage (normal) == 310
     // result stage (sephiroth) == 354
     let is_result_stage = stage_id == 310 || stage_id == 354;
     if is_result_stage {
-        update_in_game_flag(false);
+        update_match_flag(MatchFlag::Inactive);
         return;
     }
 
-    // ignore waiting room stage
-    let is_waiting_room_stage = stage_id == 311;
-    if is_waiting_room_stage {
-        update_in_game_flag(false);
+    if is_training_mode || is_waiting_room_stage {
+        update_match_flag(MatchFlag::Training);
         return;
     }
 
-    update_in_game_flag(true);
+    let fighter_entry_count = get_fighter_entry_count();
+    let match_flag = if fighter_entry_count > 2 {
+        MatchFlag::Doubles
+    } else {
+        MatchFlag::Singles
+    };
+    update_match_flag(match_flag);
 }
 
 //result stage ui
@@ -217,20 +252,6 @@ unsafe fn on_stage_presetup(ctx: &InlineCtx) {
 //    update_in_game_flag(in_actual_match);
 //
 //    println!("MATCH START");
-//}
-
-// 7102ef5720: Result stage presetup
-//#[skyline::hook(offset = 0x2ef5724, inline)]
-//unsafe fn on_match_end(_: &InlineCtx) {
-//    update_in_game_flag(false);
-//    println!("MATCH END");
-//}
-
-// 7102ef5b90: Result stage presetup (sephiroth only)
-//#[skyline::hook(offset = 0x2ef5b94, inline)]
-//unsafe fn on_match_end2(_: &InlineCtx) {
-//    update_in_game_flag(false);
-//    println!("MATCH END (SEPHIROTH)");
 //}
 
 pub fn install() {
