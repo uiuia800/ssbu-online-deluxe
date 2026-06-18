@@ -32,19 +32,22 @@ A performance and online enhancement mod for **Super Smash Bros. Ultimate** that
 - On the character select screen or online arena:
   - `D-pad Left/Right`: Select network latency
   - `D-pad Up/Down`: Select render profile
+  - `Left Trigger + Right Trigger + Z + X`: Toggle FPS Boost mode (AKA FPS++ mode)
 
 - On the character select screen (more than one opponent):
-  - `ZL + ZR + Dpad Left/Right`: Cycle between which opponent's network info to show
+  - `Left Trigger + Right Trigger + Dpad Left/Right`: Cycle between which opponent's network info to show
 
 See 'Features' section below to see what these options do
 
 ### Overlay UI (Optional)
 
-- `ZL + ZR + D-Pad Down` → Cycle between current window mode
+- `Left Trigger + Right Trigger + D-Pad Down` → Cycle between current window mode
   - Window Modes: `Hidden`, `Full Info`, `Performance Info`
   - In `Full Info Mode`:
-    - `D-Pad Up / Down` → Select option
+    - `D-Pad Up / Down` → Select row
     - `D-Pad Left / Right` → Change value
+    - While row `NetProfile` is selected:
+      - `Left Trigger + Right Trigger + Z + X`: Toggle FPS Boost mode (AKA FPS++ mode)
 
 See 'Features' section below to see what these options do
 
@@ -82,6 +85,11 @@ See 'Features' section below to see what these options do
       - This also works on console, but the game resolution will be scaled down to keep it stutter free.
       - On console, you may notice that certain UI elements look glitchy, such as the fighter cut-in screen, and match start countdown ui.
     - LLDoubles (Recommended for doubles): This applies optimizations to cut 2 frames of native input delay. This should work even in doubles when there are alot of players on screen without stuttering.
+  - FPS Boost mode (AKA FPS++ Mode):
+    - Only available on emulators.
+    - If enabled, the current profile has '++' at the end of it. For example: LLUltra++
+    - The amount of native latency it reduces varies based on the currently selected profile. For example, this will cutoff 3f of delay on Vanilla profile. But on LLUltra, it will only cutoff about half a frame of delay.
+    - This may introduce some frametime variance causing the game to not feel as smooth.
 
 **If you arent sure what profile to use, just leave it on Auto**
 
@@ -97,6 +105,21 @@ Best profile for doubles:
 > The mod will apply the **selected render profile automatically** when entering a valid online match.  
 > Reverts to **vanilla settings** after exiting  
 > You can play offline/training modes without having to worry about timing differences.
+
+### 🎛️ Render Profile Config
+
+You can specify a config file in `sd/ultimate/ssbu_online_deluxe/config.toml`
+- This will allow you to set the profile to use in the menu, and offline singles/doubles matches
+- Add '++' at the end of the profile name to enable fps boost mode (emulator only)
+
+Example `config.toml`:
+```
+menu = "Vanilla"
+
+[offline_match]
+singles = "LessLagUltra++"
+doubles = "LessLag"
+```
 
 ## 📝 Notes and Contribution
 
