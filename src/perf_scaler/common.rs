@@ -4,7 +4,7 @@ use smashline::{
     skyline_smash::{
         app::{
             self,
-            lua_bind::{CameraModule, WorkModule},
+            lua_bind::{SlowModule, WorkModule},
         },
         lib::lua_const::FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID,
     },
@@ -13,65 +13,77 @@ use smashline::{
 
 use crate::perf_scaler::{pop_dynamic_res_report, push_dynamic_res_report};
 
-static ZOOM_IN_ATTACK_LANDED: AtomicBool = AtomicBool::new(false);
+static CRITICAL_ATTACK_LANDED: AtomicBool = AtomicBool::new(false);
 
-extern "C" fn global_camera_zoom_state_fighter_frame(fighter: &mut L2CFighterCommon) {
-    static mut ZOOM_ACTIVE: bool = false;
-    static mut PREV_CAMERA_TYPE: i32 = i32::MIN;
-    static mut ZOOM_FINISH_COOLDOWN_FRAMES: i32 = 7;
+extern "C" {
+    #[link_name = "\u{1}_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E"]
+    static mut FIGHTER_MANAGER: *mut app::FighterManager;
 
+    #[link_name = "\u{1}_ZN3app8lua_bind38FighterManager__get_fighter_entry_implEPNS_14FighterManagerENS_14FighterEntryIDE"]
+    fn get_fighter_entry(arg1: *mut app::FighterManager, arg2: i32) -> u64;
+}
+
+fn is_valid_fighter_entry_id(entry_id: i32) -> bool {
     unsafe {
-        let module_accessor =
-            app::sv_system::battle_object_module_accessor(fighter.lua_state_agent);
-
-        let camera_type = CameraModule::get_camera_type(module_accessor) as i32;
-
-        if !ZOOM_IN_ATTACK_LANDED.load(Ordering::SeqCst) {
-            return;
+        if entry_id < 0 || entry_id > 7 {
+            return false;
         }
+        let entry = get_fighter_entry(FIGHTER_MANAGER, entry_id);
+        return entry != 0;
+    }
+}
 
-        let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
-        if entry_id != 0 {
-            return;
-        }
-        let camera_zoom_active_now = camera_type == 3;
+unsafe extern "C" fn global_camera_zoom_state_fighter_frame(fighter: &mut L2CFighterCommon) {
+    const CRITICAL_HIT_FINISH_COOLDOWN_FRAMES: i32 = 7;
+    static mut CRITICAL_HIT_ACTIVE: bool = false;
+    static mut CRITICAL_HIT_FINISH_COOLDOWN_FRAMES_LEFT: i32 = CRITICAL_HIT_FINISH_COOLDOWN_FRAMES;
+    static mut MAIN_ENTRY_ID: i32 = -1;
 
-        if camera_type != PREV_CAMERA_TYPE {
-            println!(
-                "[CAMERA_DRS] camera_type={} active={}",
-                camera_type, ZOOM_ACTIVE
-            );
-            PREV_CAMERA_TYPE = camera_type;
-        }
-
-        if camera_zoom_active_now {
-            ZOOM_FINISH_COOLDOWN_FRAMES = 7;
-            if !ZOOM_ACTIVE {
-                ZOOM_ACTIVE = true;
-                println!("[CAMERA_DRS] camera zoom detected");
+    if !is_valid_fighter_entry_id(MAIN_ENTRY_ID) {
+        for i in 0..8 {
+            if is_valid_fighter_entry_id(i) {
+                MAIN_ENTRY_ID = i;
+                break;
             }
-        } else if ZOOM_ACTIVE {
-            ZOOM_FINISH_COOLDOWN_FRAMES -= 1;
-            println!(
-                "[CAMERA_DRS] zoom finish cooldown frames left: {}",
-                ZOOM_FINISH_COOLDOWN_FRAMES
-            );
-            if ZOOM_FINISH_COOLDOWN_FRAMES <= 0 {
-                ZOOM_ACTIVE = false;
-                println!("[CAMERA_DRS] intensive_frame_end");
-                pop_dynamic_res_report();
-                ZOOM_IN_ATTACK_LANDED.store(false, Ordering::SeqCst);
-            }
+        }
+    }
+
+    let module_accessor = app::sv_system::battle_object_module_accessor(fighter.lua_state_agent);
+    let entry_id = WorkModule::get_int(module_accessor, *FIGHTER_INSTANCE_WORK_ID_INT_ENTRY_ID);
+    if entry_id != MAIN_ENTRY_ID {
+        return;
+    }
+
+    if !CRITICAL_ATTACK_LANDED.load(Ordering::SeqCst) {
+        return;
+    }
+
+    let is_slow = SlowModule::is_slow(module_accessor);
+
+    if is_slow {
+        CRITICAL_HIT_FINISH_COOLDOWN_FRAMES_LEFT = CRITICAL_HIT_FINISH_COOLDOWN_FRAMES;
+        CRITICAL_HIT_ACTIVE = true;
+    } else if CRITICAL_HIT_ACTIVE {
+        CRITICAL_HIT_FINISH_COOLDOWN_FRAMES_LEFT -= 1;
+        println!(
+            "[CRITICAL_HIT_DRS] critical hit finish cooldown frames left: {}",
+            CRITICAL_HIT_FINISH_COOLDOWN_FRAMES_LEFT
+        );
+        if CRITICAL_HIT_FINISH_COOLDOWN_FRAMES_LEFT <= 0 {
+            CRITICAL_HIT_ACTIVE = false;
+            println!("[CRITICAL_HIT_DRS] intensive_frame_end");
+            pop_dynamic_res_report();
+            CRITICAL_ATTACK_LANDED.store(false, Ordering::SeqCst);
         }
     }
 }
 
 #[skyline::hook(replace=app::sv_animcmd::EFFECT_GLOBAL_BACK_GROUND_CUT_IN_CENTER_POS)]
 unsafe fn cut_in_center(lua_state: u64) {
-    println!("[CAMERA_DRS] intensive_frame_start");
-    ZOOM_IN_ATTACK_LANDED.store(true, Ordering::SeqCst);
-    println!("[CAMERA_DRS] intensive_frame_start");
-    push_dynamic_res_report();
+    if !CRITICAL_ATTACK_LANDED.swap(true, Ordering::SeqCst) {
+        println!("[CRITICAL_HIT_DRS] intensive_frame_start");
+        push_dynamic_res_report();
+    }
     call_original!(lua_state);
 }
 
