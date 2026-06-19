@@ -157,31 +157,24 @@ fn is_row_configurable(row: usize) -> bool {
 }
 
 fn poll_selected_setting(input_snapshot: &InputSnapshot) {
-    let is_valid_online_mode = is_valid_online_mode();
-    let is_in_valid_online_game = is_in_valid_online_game();
+    let allow_interact = is_valid_online_mode() && !is_in_valid_online_game();
+    if !allow_interact {
+        return;
+    }
     match SELECTED_TABLE_ROW.load(Ordering::SeqCst) {
         ROW_NET_LATENCY => {
-            let allow_interact = is_valid_online_mode && !is_in_valid_online_game;
-            if allow_interact {
-                LATENCY_SLIDER_MANAGER.poll(
-                    input_snapshot,
-                    ninput::Buttons::LEFT,
-                    ninput::Buttons::RIGHT,
-                );
-            }
+            LATENCY_SLIDER_MANAGER.poll(
+                input_snapshot,
+                ninput::Buttons::LEFT,
+                ninput::Buttons::RIGHT,
+            );
         }
         ROW_RENDER_PROFILE => {
-            let allow_interact = is_valid_online_mode && !is_in_valid_online_game;
-            if allow_interact {
-                let profile_changed = RENDER_PROFILE_MANAGER.poll(
-                    input_snapshot,
-                    ninput::Buttons::LEFT,
-                    ninput::Buttons::RIGHT,
-                );
-                if profile_changed {
-                    RENDER_PROFILE_MANAGER.apply_selected_profile_settings();
-                }
-            }
+            RENDER_PROFILE_MANAGER.poll(
+                input_snapshot,
+                ninput::Buttons::LEFT,
+                ninput::Buttons::RIGHT,
+            );
         }
         _ => {}
     }
@@ -275,7 +268,7 @@ unsafe fn draw_interact_table(first_col_width: f32) {
     if is_valid_online_mode {
         let latency = LATENCY_SLIDER_MANAGER
             .active_latency()
-            .unwrap_or(LATENCY_SLIDER_MANAGER.selected_latency());
+            .unwrap_or_else(|| LATENCY_SLIDER_MANAGER.selected_latency());
         let slider_val = as_imgui_text(latency.to_string());
         draw_text_cell(&slider_val);
     } else {
