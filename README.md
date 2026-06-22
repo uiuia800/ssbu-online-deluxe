@@ -19,14 +19,15 @@ A performance and online enhancement mod for **Super Smash Bros. Ultimate** that
 ### Manual Installation
 
 - Ensure you have these prerequisite installed on your switch/emulator:
-  - [skyline](https://github.com/saad-script/ssbu-online-deluxe/releases)
-    - ⚠️ The latest version of skyline causes crashes. Use the version linked above.
+  - ~~[skyline](https://github.com/skyline-dev/skyline/releases)~~
+    - ⚠️ The latest version causes crashes. Use the version bundled into the ssbu-online-deluxe release zip.
   - [arcropolis](https://github.com/raytwo/arcropolis/releases)
   - [nro-hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
   - [smashline](https://github.com/HDR-Development/smashline/releases)
   - [imgui-smash](https://github.com/Coolsonickirby/imgui-smash/releases)
   - [ssbu-pia-manager](https://github.com/project-ultelier/ssbu-pia-interface/releases)
-  - [ssbusync](https://github.com/project-ultelier/smash-ultelier/releases)
+  - ~~[ssbusync](https://github.com/project-ultelier/smash-ultelier/releases)~~
+    - ⚠️ Currently outdated. Use the version bundled into the ssbu-online-deluxe release zip.
 - Then you can install the latest release of ssbu-online-deluxe: [ssbu-online-deluxe](https://github.com/saad-script/ssbu-online-deluxe/releases)
 
 
