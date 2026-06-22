@@ -120,11 +120,15 @@ pub struct LatencySliderManager {
 }
 
 impl LatencySliderManager {
-    pub const fn new() -> Self {
+    const fn new() -> Self {
         LatencySliderManager {
             selected_latency: Latency::auto(),
             active_latency: Latency::unknown(),
         }
+    }
+    pub fn instance() -> &'static Self {
+        static LATENCY_SLIDER_MANAGER: LatencySliderManager = LatencySliderManager::new();
+        &LATENCY_SLIDER_MANAGER
     }
     pub fn selected_latency(&self) -> &Latency {
         &self.selected_latency
@@ -154,19 +158,17 @@ impl LatencySliderManager {
     }
 }
 
-pub static LATENCY_SLIDER_MANAGER: LatencySliderManager = LatencySliderManager::new();
-
 #[skyline::hook(offset = 0x16ccc58, inline)]
 unsafe fn set_online_latency(ctx: &InlineCtx) {
     if net::is_valid_online_mode() {
         println!("SET ONLINE LATENCY");
         let auto = *(ctx.registers[19].x() as *mut u8);
         LAST_AUTO.store(auto as i8, Ordering::SeqCst);
-        let buffer = LATENCY_SLIDER_MANAGER
+        let buffer = LatencySliderManager::instance()
             .selected_latency
             .buffer
             .load(Ordering::SeqCst);
-        LATENCY_SLIDER_MANAGER
+        LatencySliderManager::instance()
             .active_latency
             .buffer
             .store(buffer, Ordering::SeqCst);
@@ -177,7 +179,7 @@ unsafe fn set_online_latency(ctx: &InlineCtx) {
 }
 
 pub(crate) fn match_cleanup() {
-    LATENCY_SLIDER_MANAGER
+    LatencySliderManager::instance()
         .active_latency
         .buffer
         .store(VALUE_UNKNOWN, Ordering::SeqCst);

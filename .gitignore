@@ -1,4 +1,3 @@
-/target
 Cargo.lock
-yuzu_build.ps1
-ryujinx_build.ps1
+/target
+/sdcard

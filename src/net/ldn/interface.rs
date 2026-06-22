@@ -6,7 +6,7 @@ use std::time::Duration;
 use ssbu_pia_interface::NetworkStability;
 use ultelier::sync_guest;
 
-use crate::net::latency_slider::{Latency, LATENCY_SLIDER_MANAGER};
+use crate::net::latency_slider::{Latency, LatencySliderManager};
 use crate::utils;
 
 extern "C" {
@@ -205,7 +205,7 @@ impl NetworkPacket {
         }
         NetworkPacket {
             packet_type: NetworkPacketType::Ping,
-            delay: LATENCY_SLIDER_MANAGER.selected_latency().clone(),
+            delay: LatencySliderManager::instance().selected_latency().clone(),
             less_lag_enabled: !sync_guest::is_vanilla_runtime().unwrap_or(true),
             timestamp,
         }
@@ -214,7 +214,7 @@ impl NetworkPacket {
     pub fn create_pong_packet(packet: &NetworkPacket) -> Self {
         NetworkPacket {
             packet_type: NetworkPacketType::Pong,
-            delay: LATENCY_SLIDER_MANAGER.selected_latency().clone(),
+            delay: LatencySliderManager::instance().selected_latency().clone(),
             less_lag_enabled: !sync_guest::is_vanilla_runtime().unwrap_or(true),
             timestamp: packet.timestamp,
         }

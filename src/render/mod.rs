@@ -8,7 +8,11 @@ extern "C" {
     fn nx_over_configure_nstuff_oc() -> u32;
 }
 
-pub fn install() {
+pub(super) fn on_nro_load() {
+    profile::on_nro_load();
+}
+
+pub(super) fn install() {
     let is_emulator = is_emulator();
 
     let mut config = SsbuSyncConfig::vanilla();
@@ -18,5 +22,4 @@ pub fn install() {
     }
 
     ultelier::sync_guest::install(config);
-    profile::install();
 }

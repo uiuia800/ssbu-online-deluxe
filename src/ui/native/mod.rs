@@ -7,8 +7,8 @@ use skyline::nn::ui2d::{HorizontalPosition, Pane, PaneFlag, TextBoxFlag, Vertica
 
 use crate::{
     input_poll::{InputSnapshot, PollerContext, POLLER},
-    net::{latency_slider::LATENCY_SLIDER_MANAGER, pia::StationExt},
-    render::profile::RENDER_PROFILE_MANAGER,
+    net::{latency_slider::LatencySliderManager, pia::StationExt},
+    render::profile::RenderProfileManager,
 };
 
 static NATIVE_UI_POLLER_CONTEXT: PollerContext =
@@ -35,12 +35,16 @@ pub unsafe fn update_css_ui(banner_pane1_ptr: *mut Pane) {
     if !crate::ui::overlay::is_window_interactable() {
         let input_snapshot = POLLER.snapshot(&NATIVE_UI_POLLER_CONTEXT);
         let direction = poll_station_cycle(&input_snapshot);
-        LATENCY_SLIDER_MANAGER.poll(
+        LatencySliderManager::instance().poll(
             &input_snapshot,
             ninput::Buttons::LEFT,
             ninput::Buttons::RIGHT,
         );
-        RENDER_PROFILE_MANAGER.poll(&input_snapshot, ninput::Buttons::DOWN, ninput::Buttons::UP);
+        RenderProfileManager::instance().poll(
+            &input_snapshot,
+            ninput::Buttons::DOWN,
+            ninput::Buttons::UP,
+        );
         let num_stations = StationConnectionManager::num_connected_stations();
         if num_stations > 0 {
             CURR_STATION_INDEX = (CURR_STATION_INDEX as isize + direction as isize)
@@ -49,9 +53,9 @@ pub unsafe fn update_css_ui(banner_pane1_ptr: *mut Pane) {
             CURR_STATION_INDEX = 0;
         }
     }
-    let latency = LATENCY_SLIDER_MANAGER.selected_latency();
-    let rp = RENDER_PROFILE_MANAGER.selected_render_profile();
-    let rp_is_auto = RENDER_PROFILE_MANAGER.is_auto_mode();
+    let latency = LatencySliderManager::instance().selected_latency();
+    let rp = RenderProfileManager::instance().selected_render_profile();
+    let rp_is_auto = RenderProfileManager::instance().is_auto_mode();
 
     let (station_line_str, r, g, b, a) = if let Some(station) =
         StationConnectionManager::get_connected_station(CURR_STATION_INDEX)
@@ -137,13 +141,15 @@ pub unsafe fn update_css_ui(banner_pane1_ptr: *mut Pane) {
 pub unsafe fn update_local_online_ui(pane_handle: *mut Pane) {
     if !crate::ui::overlay::is_window_interactable() {
         let input_snapshot = POLLER.snapshot(&NATIVE_UI_POLLER_CONTEXT);
-        LATENCY_SLIDER_MANAGER.poll(
+        LatencySliderManager::instance().poll(
             &input_snapshot,
             ninput::Buttons::LEFT,
             ninput::Buttons::RIGHT,
         );
     }
-    let delay_str = LATENCY_SLIDER_MANAGER.selected_latency().to_string();
+    let delay_str = LatencySliderManager::instance()
+        .selected_latency()
+        .to_string();
     (*pane_handle)
         .as_textbox()
         .set_text_string(&format!("{}", delay_str));
@@ -152,12 +158,16 @@ pub unsafe fn update_local_online_ui(pane_handle: *mut Pane) {
 pub unsafe fn update_online_arena_ui(pane_handle: *mut Pane, room_id: String) {
     if !crate::ui::overlay::is_window_interactable() {
         let input_snapshot = POLLER.snapshot(&NATIVE_UI_POLLER_CONTEXT);
-        LATENCY_SLIDER_MANAGER.poll(
+        LatencySliderManager::instance().poll(
             &input_snapshot,
             ninput::Buttons::LEFT,
             ninput::Buttons::RIGHT,
         );
-        RENDER_PROFILE_MANAGER.poll(&input_snapshot, ninput::Buttons::DOWN, ninput::Buttons::UP);
+        RenderProfileManager::instance().poll(
+            &input_snapshot,
+            ninput::Buttons::DOWN,
+            ninput::Buttons::UP,
+        );
     }
 
     let mut station_lines = String::new();
@@ -183,9 +193,9 @@ pub unsafe fn update_online_arena_ui(pane_handle: *mut Pane, room_id: String) {
         station_lines.push_str(line.as_str());
     }
 
-    let latency = LATENCY_SLIDER_MANAGER.selected_latency();
-    let rp = RENDER_PROFILE_MANAGER.selected_render_profile();
-    let rp_is_auto = RENDER_PROFILE_MANAGER.is_auto_mode();
+    let latency = LatencySliderManager::instance().selected_latency();
+    let rp = RenderProfileManager::instance().selected_render_profile();
+    let rp_is_auto = RenderProfileManager::instance().is_auto_mode();
     let local_rp_str = if rp_is_auto {
         format!("Auto({})", rp)
     } else {

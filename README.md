@@ -14,16 +14,65 @@ A performance and online enhancement mod for **Super Smash Bros. Ultimate** that
 
 ## 📦 Installation
 
-- Remove any previous latency slider mod, vsync mod, and less lag mod:
-- Download and extract the zip from the releases, then:
-- Copy the `atmosphere` folder to the root of the SD card (or sdmc directory on emulator).
-- Your Switch may need a full restart for the mod to load correctly.
-- Eden emulator currently requires a workaround:
-  - Right click SSBU -> Click `Configure Game` -> Click `System` tab -> Check `RNG Seed` -> Set to `00000000`
+> ⚠️ Remove any previous latency slider mod, vsync mod, and less lag mod before proceeding with the installation steps!
 
-> ⚠️ The latest skyline currently causes a crash. Use the skyline files bundled in with the release zip.  
-> ⚡ If you are using emulator, I recommend using [ssbu-emu-optimizer](https://github.com/saad-script/ssbu-emu-optimizer/releases). It will setup everything for you.
+### Manual Installation
 
+- Ensure you have these prerequisite installed on your switch/emulator:
+  - [skyline](https://github.com/saad-script/ssbu-online-deluxe/releases)
+    - ⚠️ The latest version of skyline causes crashes. Use the version linked above.
+  - [arcropolis](https://github.com/raytwo/arcropolis/releases)
+  - [nro-hook](https://github.com/ultimate-research/nro-hook-plugin/releases)
+  - [smashline](https://github.com/HDR-Development/smashline/releases)
+  - [imgui-smash](https://github.com/Coolsonickirby/imgui-smash/releases)
+  - [ssbu-pia-manager](https://github.com/project-ultelier/ssbu-pia-interface/releases)
+  - [ssbusync](https://github.com/project-ultelier/smash-ultelier/releases)
+- Then you can install the latest release of ssbu-online-deluxe: [ssbu-online-deluxe](https://github.com/saad-script/ssbu-online-deluxe/releases)
+
+
+### Automatic Installation
+
+Console:
+- Run `create-sdcard-folder.ps1` powershell script (On Windows: Right click -> Run with Powershell). It will download and setup the atmosphere folder for you in a newly created folder `sdcard/`.
+- Then copy the contents of `sdcard/` to the root of your SD card.
+
+Emulator:
+- You can use the same script above, but just copy it into the `sdmc` folder instead:
+  - Then, apply this workaround if you are on Eden emulator:
+    - Right click SSBU -> Click `Configure Game` -> Click `System` tab -> Check `RNG Seed` -> Set to `00000000`
+- Alternatively, you can use the app I made: [ssbu-emu-optimizer](https://github.com/saad-script/ssbu-emu-optimizer/releases). It will setup everything for you.
+
+
+### Verify
+
+Verify that your sdcard directory strucure looks like this on your switch or emulator:
+
+```
+`sdcard/` (or `sdmc/` on emulator)
+│
+├── atmosphere/
+│   └── contents/
+│       ├── 00FF0000A11CE0FF/
+│       │   ├── exefs.nsp
+│       │   └── flags/
+│       │       └── boot2.flag
+│       └── 01006A800016E000/
+│           ├── exefs/
+│           │   ├── main.npdm
+│           │   └── subsdk9
+│           └── romfs/
+│               └── skyline/
+│                   └── plugins/
+│                       ├── libarcropolis.nro
+│                       ├── libimgui_smash.nro
+│                       ├── libnro_hook.nro
+│                       ├── libnx_over.nro
+│                       ├── libsmashline_plugin.nro
+│                       ├── libssbu_online_deluxe.nro
+│                       ├── libssbu_pia_manager.nro
+│                       └── libssbusync.nro
+│
+```
 
 ## 🎮 Controls
 
@@ -106,7 +155,7 @@ Best profile for doubles:
 > Reverts to **vanilla settings** after exiting  
 > You can play offline/training modes without having to worry about timing differences.
 
-### 🎛️ Render Profile Config
+### 🎛️ Render Profile Config (Optional)
 
 You can specify a config file in `sd/ultimate/ssbu_online_deluxe/config.toml`
 - This will allow you to set the profile to use in the menu, and offline singles/doubles matches
@@ -114,11 +163,15 @@ You can specify a config file in `sd/ultimate/ssbu_online_deluxe/config.toml`
 
 Example `config.toml`:
 ```
-menu = "Vanilla"
+menu = "Vanilla"              # Recommended to keep this on Vanilla always
 
 [offline_match]
-singles = "LessLagUltra++"
-doubles = "LessLag"
+singles = "LessLag"           # Applies to offline single matches (1 or 2 players)
+doubles = "LessLagDoubles"    # Applies to offline doubles matches (more than 2 players)
+
+[online_match]
+singles = "LessLagUltra++"    # 'Auto' mode will choose this profile for online single matches
+doubles = "LessLag"           # 'Auto' mode will choose this profile for online double matches
 ```
 
 ## 📝 Notes and Contribution
@@ -148,4 +201,3 @@ Huge thanks to the following people who made this possible. Without these people
 
 - **The developers of Skyline**
   For the modding environment, allowing for code hooking/edits
-

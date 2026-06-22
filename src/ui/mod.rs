@@ -1,6 +1,6 @@
 pub mod native;
 pub mod overlay;
 
-pub fn install() {
+pub(super) fn install() {
     overlay::install();
 }

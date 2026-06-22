@@ -1,37 +1,47 @@
 use std::sync::{
     atomic::{AtomicBool, AtomicU16, Ordering},
-    LazyLock, RwLock,
+    RwLock,
 };
 
 use serde::{de::IntoDeserializer, Deserialize, Deserializer};
-use skyline::hooks::InlineCtx;
 use ssbu_pia_interface::StationConnectionManager;
 use ultelier::sync_guest::{self, profile::DockedProfile, BufferMode, IndexMode, ResolutionLevel};
 
 use crate::{
     input_poll::InputSnapshot,
-    net::{get_match_flag, is_connected, is_in_game, is_valid_online_mode, MatchFlag},
+    net::{get_match_status, is_connected, is_in_game, is_valid_online_mode, MatchStatus},
     utils::is_emulator,
 };
-
-pub static RENDER_PROFILE_MANAGER: LazyLock<RenderProfileManager> =
-    LazyLock::new(|| RenderProfileManager::new());
 
 static RENDER_PROFILE_CONFIG_FILE_PATH: &str = "sd:/ultimate/ssbu_online_deluxe/config.toml";
 static RENDER_PROFILE_CONFIG: RwLock<Option<RenderProfileConfig>> = RwLock::new(None);
 
 #[repr(C)]
-#[derive(Debug, Default, Deserialize)]
-pub struct MatchRenderProfiles {
-    singles: RenderProfile,
-    doubles: RenderProfile,
+#[derive(Debug, Default)]
+pub struct FFIMatchRenderProfiles {
+    singles: *const RenderProfile,
+    doubles: *const RenderProfile,
 }
 
 #[repr(C)]
+#[derive(Debug, Default)]
+pub struct FFIRenderProfileConfig {
+    menu: *const RenderProfile,
+    offline_match: *const FFIMatchRenderProfiles,
+    online_match: *const FFIMatchRenderProfiles,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct MatchRenderProfiles {
+    singles: Option<RenderProfile>,
+    doubles: Option<RenderProfile>,
+}
+
 #[derive(Debug, Default, Deserialize)]
 pub struct RenderProfileConfig {
-    menu: RenderProfile,
-    offline_match: MatchRenderProfiles,
+    menu: Option<RenderProfile>,
+    offline_match: Option<MatchRenderProfiles>,
+    online_match: Option<MatchRenderProfiles>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +56,7 @@ pub struct RenderProfileSettings {
 }
 
 impl RenderProfileSettings {
-    pub fn vanilla() -> Self {
+    pub const fn vanilla() -> Self {
         RenderProfileSettings {
             buffer_mode: BufferMode::Triple,
             index_mode: IndexMode::TwoBehind,
@@ -96,6 +106,54 @@ impl RenderProfileSettings {
             boost_enabled: false,
         }
     }
+    pub fn from_render_profile(rp: RenderProfile) -> Self {
+        let mut rps = match rp.preset {
+            RenderProfilePreset::Vanilla => RenderProfileSettings::vanilla(),
+            RenderProfilePreset::LessLag => RenderProfileSettings::less_lag(),
+            RenderProfilePreset::LessLagUltra => RenderProfileSettings::less_lag_ultra(),
+            RenderProfilePreset::LessLagDoubles => RenderProfileSettings::less_lag_doubles(),
+            _ => panic!("Must specific a valid render profile"),
+        };
+        rps.boost_enabled = rp.boost_enabled;
+        rps
+    }
+    pub fn from_env() -> Self {
+        RenderProfileSettings {
+            buffer_mode: sync_guest::buffer_mode()
+                .flatten()
+                .unwrap_or(BufferMode::Triple),
+            index_mode: sync_guest::index_mode()
+                .flatten()
+                .unwrap_or(IndexMode::TwoBehind),
+            default_resolution_level: sync_guest::default_game_resolution_level()
+                .flatten()
+                .unwrap_or(ResolutionLevel::Res1920x1080),
+            dynamic_res_enabled: sync_guest::dynamic_resolution_enabled().unwrap_or(false),
+            vsync_enabled: sync_guest::vsync_enabled().unwrap_or(true),
+            render_opts_enabled: sync_guest::render_opts_enabled().unwrap_or(false),
+            boost_enabled: sync_guest::fps_boost_enabled().unwrap_or(false),
+        }
+    }
+    pub fn from_bits(bits: u16) -> Option<Self> {
+        Some(Self {
+            buffer_mode: BufferMode::from_u32((bits & 0b11) as u32)?,
+            index_mode: IndexMode::from_u32(((bits >> 2) & 0b11) as u32)?,
+            default_resolution_level: ResolutionLevel::from_u32(((bits >> 4) & 0x7f) as u32)?,
+            dynamic_res_enabled: ((bits >> 11) & 1) != 0,
+            vsync_enabled: ((bits >> 12) & 1) != 0,
+            render_opts_enabled: ((bits >> 13) & 1) != 0,
+            boost_enabled: ((bits >> 14) & 1) != 0,
+        })
+    }
+    pub const fn to_bits(&self) -> u16 {
+        (self.buffer_mode as u16)
+            | ((self.index_mode as u16) << 2)
+            | ((self.default_resolution_level as u16) << 4)
+            | ((self.dynamic_res_enabled as u16) << 11)
+            | ((self.vsync_enabled as u16) << 12)
+            | ((self.render_opts_enabled as u16) << 13)
+            | ((self.boost_enabled as u16) << 14)
+    }
     pub fn buffer_mode(&self) -> BufferMode {
         self.buffer_mode
     }
@@ -117,37 +175,6 @@ impl RenderProfileSettings {
     pub fn boost_enabled(&self) -> bool {
         self.boost_enabled
     }
-    pub fn from_render_profile(rp: RenderProfile) -> Self {
-        let mut rps = match rp.preset {
-            RenderProfilePreset::Vanilla => RenderProfileSettings::vanilla(),
-            RenderProfilePreset::LessLag => RenderProfileSettings::less_lag(),
-            RenderProfilePreset::LessLagUltra => RenderProfileSettings::less_lag_ultra(),
-            RenderProfilePreset::LessLagDoubles => RenderProfileSettings::less_lag_doubles(),
-            _ => panic!("Must specific a valid render profile"),
-        };
-        rps.boost_enabled = rp.boost_enabled;
-        rps
-    }
-    pub fn to_bits(&self) -> u16 {
-        (self.buffer_mode as u16)
-            | ((self.index_mode as u16) << 2)
-            | ((self.default_resolution_level as u16) << 4)
-            | ((self.dynamic_res_enabled as u16) << 11)
-            | ((self.vsync_enabled as u16) << 12)
-            | ((self.render_opts_enabled as u16) << 13)
-            | ((self.boost_enabled as u16) << 14)
-    }
-    pub fn from_bits(bits: u16) -> Option<Self> {
-        Some(Self {
-            buffer_mode: BufferMode::from_u32((bits & 0b11) as u32)?,
-            index_mode: IndexMode::from_u32(((bits >> 2) & 0b11) as u32)?,
-            default_resolution_level: ResolutionLevel::from_u32(((bits >> 4) & 0x7f) as u32)?,
-            dynamic_res_enabled: ((bits >> 11) & 1) != 0,
-            vsync_enabled: ((bits >> 12) & 1) != 0,
-            render_opts_enabled: ((bits >> 13) & 1) != 0,
-            boost_enabled: ((bits >> 14) & 1) != 0,
-        })
-    }
 }
 
 #[repr(u8)]
@@ -161,6 +188,23 @@ pub enum RenderProfilePreset {
     #[serde(alias = "LLDoubles")]
     LessLagDoubles = 3,
     Custom = 4,
+}
+
+impl RenderProfilePreset {
+    fn recommended(is_online: bool, is_doubles: bool) -> Self {
+        if is_online {
+            if is_doubles {
+                return Self::LessLagDoubles;
+            } else {
+                if is_emulator() {
+                    return Self::LessLagUltra;
+                } else {
+                    return Self::LessLag;
+                }
+            }
+        }
+        Self::Vanilla
+    }
 }
 
 #[repr(C)]
@@ -233,33 +277,32 @@ impl std::fmt::Display for RenderProfile {
 
 pub struct RenderProfileManager {
     auto_mode: AtomicBool,
-    active_profile_settings: AtomicU16,
     selected_profile_settings: AtomicU16,
-    dirty_flag: AtomicBool,
 }
 
 impl RenderProfileManager {
-    pub fn new() -> Self {
+    const fn new() -> Self {
         RenderProfileManager {
             auto_mode: AtomicBool::new(true),
-            active_profile_settings: AtomicU16::new(RenderProfileSettings::vanilla().to_bits()),
             selected_profile_settings: AtomicU16::new(RenderProfileSettings::vanilla().to_bits()),
-            dirty_flag: AtomicBool::new(false),
         }
+    }
+    pub fn instance() -> &'static Self {
+        static RENDER_PROFILE_MANAGER: RenderProfileManager = RenderProfileManager::new();
+        &RENDER_PROFILE_MANAGER
     }
     pub fn selected_render_profile_settings(&self) -> RenderProfileSettings {
         RenderProfileSettings::from_bits(self.selected_profile_settings.load(Ordering::SeqCst))
             .unwrap()
     }
-    pub fn active_render_profile_settings(&self) -> RenderProfileSettings {
-        RenderProfileSettings::from_bits(self.active_profile_settings.load(Ordering::SeqCst))
-            .unwrap()
+    pub fn active_render_profile_settings() -> RenderProfileSettings {
+        RenderProfileSettings::from_env()
     }
     pub fn selected_render_profile(&self) -> RenderProfile {
         RenderProfile::from_settings(&self.selected_render_profile_settings())
     }
-    pub fn active_render_profile(&self) -> RenderProfile {
-        RenderProfile::from_settings(&self.active_render_profile_settings())
+    pub fn active_render_profile() -> RenderProfile {
+        RenderProfile::from_settings(&Self::active_render_profile_settings())
     }
     pub fn selected_render_profile_set_boost_enabled(&self, boost_enabled: bool) {
         let mut rps = self.selected_render_profile_settings();
@@ -267,27 +310,8 @@ impl RenderProfileManager {
         self.selected_profile_settings
             .store(rps.to_bits(), Ordering::SeqCst);
     }
-    fn select_render_profile_immediate(&self, preset: RenderProfilePreset) {
-        let rp = RenderProfile {
-            preset: preset,
-            boost_enabled: self.selected_render_profile().boost_enabled,
-        };
-        self.selected_profile_settings.store(
-            RenderProfileSettings::from_render_profile(rp).to_bits(),
-            Ordering::SeqCst,
-        );
-    }
-    fn apply_profile_settings_immediate(&self, rps: &RenderProfileSettings) {
-        self.active_profile_settings
-            .store(rps.to_bits(), Ordering::SeqCst);
-        self.dirty_flag.store(true, Ordering::SeqCst);
-    }
     pub fn apply_selected_profile_settings(&self) {
-        self.active_profile_settings.store(
-            self.selected_profile_settings.load(Ordering::SeqCst),
-            Ordering::SeqCst,
-        );
-        self.dirty_flag.store(true, Ordering::SeqCst);
+        Self::apply_render_profile_settings_immediate(&self.selected_render_profile_settings());
     }
     pub fn select_next_render_profile(&self) -> RenderProfile {
         let selected_rp = self.selected_render_profile();
@@ -336,7 +360,8 @@ impl RenderProfileManager {
     }
     pub fn set_auto_mode(&self, auto_mode: bool) {
         self.auto_mode.store(auto_mode, Ordering::SeqCst);
-        self.auto_select_profile(StationConnectionManager::num_connected_stations());
+        let num_connected_stations = StationConnectionManager::num_connected_stations();
+        self.auto_select_profile(is_valid_online_mode(), num_connected_stations > 1);
     }
     pub fn poll(
         &self,
@@ -358,7 +383,12 @@ impl RenderProfileManager {
         if cycle_buttons == prev {
             if self.is_auto_mode() {
                 self.set_auto_mode(false);
-                self.select_render_profile_immediate(RenderProfilePreset::LessLagDoubles);
+                let boost_enabled = self.selected_render_profile().boost_enabled;
+                let rp = RenderProfile {
+                    preset: RenderProfilePreset::Vanilla,
+                    boost_enabled,
+                };
+                self.select_render_profile_immediate(rp);
             } else {
                 if self.selected_render_profile().preset == RenderProfilePreset::Vanilla {
                     self.set_auto_mode(true);
@@ -370,7 +400,12 @@ impl RenderProfileManager {
         } else if cycle_buttons == next {
             if self.is_auto_mode() {
                 self.set_auto_mode(false);
-                self.select_render_profile_immediate(RenderProfilePreset::Vanilla);
+                let boost_enabled = self.selected_render_profile().boost_enabled;
+                let rp = RenderProfile {
+                    preset: RenderProfilePreset::Vanilla,
+                    boost_enabled,
+                };
+                self.select_render_profile_immediate(rp);
             } else {
                 if self.selected_render_profile().preset == RenderProfilePreset::LessLagDoubles {
                     self.set_auto_mode(true);
@@ -382,29 +417,42 @@ impl RenderProfileManager {
         }
         false
     }
-    pub fn auto_select_profile(&self, num_opponents: usize) {
+    pub fn recommended_render_profile(&self, is_online: bool, is_doubles: bool) -> RenderProfile {
+        let rpc = RENDER_PROFILE_CONFIG.read().unwrap();
+        let mrp = rpc.as_ref().and_then(|m| {
+            if is_online {
+                m.online_match.as_ref()
+            } else {
+                m.offline_match.as_ref()
+            }
+        });
+        let rp = if is_doubles {
+            mrp.and_then(|m| m.doubles)
+        } else {
+            mrp.and_then(|m| m.singles)
+        };
+
+        let rp = rp.unwrap_or_else(|| RenderProfile {
+            preset: RenderProfilePreset::recommended(is_online, is_doubles),
+            boost_enabled: self.selected_render_profile().boost_enabled,
+        });
+        rp
+    }
+    pub fn auto_select_profile(&self, is_online: bool, is_doubles: bool) {
         if !self.is_auto_mode() {
             return;
         }
-        if num_opponents == 0 {
-            self.select_render_profile_immediate(RenderProfilePreset::Vanilla);
-            return;
-        }
-        match (is_emulator(), num_opponents > 2) {
-            (_, true) => self.select_render_profile_immediate(RenderProfilePreset::LessLagDoubles),
-            (true, _) => self.select_render_profile_immediate(RenderProfilePreset::LessLagUltra),
-            (false, _) => self.select_render_profile_immediate(RenderProfilePreset::LessLag),
-        };
+        let rp = self.recommended_render_profile(is_online, is_doubles);
+        self.select_render_profile_immediate(rp);
+        println!("AUTO SELECT RP: {:?}", rp);
     }
-}
-
-#[skyline::hook(offset = 0x3747518, inline)]
-unsafe fn main_loop_hook(_ctx: &InlineCtx) {
-    if RENDER_PROFILE_MANAGER
-        .dirty_flag
-        .swap(false, Ordering::SeqCst)
-    {
-        let rps = RENDER_PROFILE_MANAGER.active_render_profile_settings();
+    fn select_render_profile_immediate(&self, rp: RenderProfile) {
+        self.selected_profile_settings.store(
+            RenderProfileSettings::from_render_profile(rp).to_bits(),
+            Ordering::SeqCst,
+        );
+    }
+    fn apply_render_profile_settings_immediate(rps: &RenderProfileSettings) {
         let _ = sync_guest::set_default_game_resolution_level(rps.default_resolution_level);
         let _ = sync_guest::set_dynamic_resolution_enabled(rps.dynamic_res_enabled);
         let _ = sync_guest::set_vsync_enabled(rps.vsync_enabled);
@@ -434,30 +482,26 @@ unsafe fn main_loop_hook(_ctx: &InlineCtx) {
 pub(crate) fn match_init() {
     let is_valid_online_mode = is_valid_online_mode();
     let is_connected = is_connected();
-    let match_flag = get_match_flag();
-    let in_real_online_match = is_connected && match_flag != MatchFlag::Training;
+    let match_status = get_match_status();
+    let in_real_online_match = is_connected && match_status != MatchStatus::Training;
 
     if in_real_online_match {
         if is_valid_online_mode {
-            RENDER_PROFILE_MANAGER.apply_selected_profile_settings();
+            // apply selected profile if its a valid online match
+            RenderProfileManager::instance()
+                .auto_select_profile(true, match_status == MatchStatus::Doubles);
+            RenderProfileManager::instance().apply_selected_profile_settings();
         } else {
             // ssbusync already enforces this, but leaving this here for clarity
-            RENDER_PROFILE_MANAGER
-                .apply_profile_settings_immediate(&RenderProfileSettings::vanilla());
+            RenderProfileManager::apply_render_profile_settings_immediate(
+                &RenderProfileSettings::vanilla(),
+            );
         }
     } else {
-        let rpc = RENDER_PROFILE_CONFIG.read().unwrap();
-        let match_rp = rpc
-            .as_ref()
-            .and_then(|c| match match_flag {
-                MatchFlag::Singles | MatchFlag::Training => Some(c.offline_match.singles),
-                MatchFlag::Doubles => Some(c.offline_match.doubles),
-                MatchFlag::Inactive => None,
-            })
-            .unwrap_or(RenderProfile::default());
-        RENDER_PROFILE_MANAGER.apply_profile_settings_immediate(
-            &RenderProfileSettings::from_render_profile(match_rp),
-        );
+        let rp = RenderProfileManager::instance()
+            .recommended_render_profile(false, match_status == MatchStatus::Doubles);
+        let rps = RenderProfileSettings::from_render_profile(rp);
+        RenderProfileManager::apply_render_profile_settings_immediate(&rps);
     }
 }
 
@@ -465,10 +509,11 @@ pub(crate) fn match_cleanup() {
     let rpc = RENDER_PROFILE_CONFIG.read().unwrap();
     let menu_rp = rpc
         .as_ref()
-        .and_then(|c| Some(c.menu))
-        .unwrap_or(RenderProfile::default());
-    RENDER_PROFILE_MANAGER
-        .apply_profile_settings_immediate(&RenderProfileSettings::from_render_profile(menu_rp));
+        .and_then(|c| c.menu)
+        .unwrap_or_else(|| RenderProfile::default());
+    RenderProfileManager::apply_render_profile_settings_immediate(
+        &RenderProfileSettings::from_render_profile(menu_rp),
+    );
 }
 
 fn try_load_config_file() -> std::io::Result<RenderProfileConfig> {
@@ -487,20 +532,44 @@ fn try_load_config_file() -> std::io::Result<RenderProfileConfig> {
 }
 
 #[no_mangle]
-pub extern "C" fn ssbu_online_deluxe_set_render_profile_config(
-    render_profile_config: RenderProfileConfig,
-) {
+pub unsafe extern "C" fn ssbu_online_deluxe_set_render_profile_config(
+    render_profile_config: *const FFIRenderProfileConfig,
+) -> bool {
     println!("[ssbu-online-deluxe] Setting config from external plugin...");
     let mut rpc = RENDER_PROFILE_CONFIG.write().unwrap();
-    *rpc = Some(render_profile_config);
+    if render_profile_config.is_null() {
+        return false;
+    }
+    *rpc = Some(RenderProfileConfig {
+        menu: render_profile_config
+            .as_ref()
+            .and_then(|d| d.menu.as_ref().cloned()),
+        offline_match: Some(MatchRenderProfiles {
+            singles: render_profile_config
+                .as_ref()
+                .and_then(|d| d.offline_match.as_ref())
+                .and_then(|d| d.singles.as_ref().cloned()),
+            doubles: render_profile_config
+                .as_ref()
+                .and_then(|d| d.offline_match.as_ref())
+                .and_then(|d| d.doubles.as_ref().cloned()),
+        }),
+        online_match: Some(MatchRenderProfiles {
+            singles: render_profile_config
+                .as_ref()
+                .and_then(|d| d.online_match.as_ref())
+                .and_then(|d| d.singles.as_ref().cloned()),
+            doubles: render_profile_config
+                .as_ref()
+                .and_then(|d| d.online_match.as_ref())
+                .and_then(|d| d.doubles.as_ref().cloned()),
+        }),
+    });
+    return true;
 }
 
-pub(super) fn install() {
-    let _ = LazyLock::force(&RENDER_PROFILE_MANAGER);
-    skyline::install_hook!(main_loop_hook);
-
+pub(super) fn on_nro_load() {
     let mut rpc = RENDER_PROFILE_CONFIG.write().unwrap();
-
     if rpc.is_none() {
         println!("Render profile config not specified. Trying to load from file...");
         let render_profile_config = match try_load_config_file() {
@@ -520,8 +589,9 @@ pub(super) fn install() {
 
     let menu_rp = rpc
         .as_ref()
-        .and_then(|c| Some(c.menu))
-        .unwrap_or(RenderProfile::default());
-    RENDER_PROFILE_MANAGER
-        .apply_profile_settings_immediate(&RenderProfileSettings::from_render_profile(menu_rp));
+        .and_then(|c| c.menu)
+        .unwrap_or_else(|| RenderProfile::default());
+    RenderProfileManager::apply_render_profile_settings_immediate(
+        &RenderProfileSettings::from_render_profile(menu_rp),
+    );
 }

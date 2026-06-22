@@ -1,10 +1,10 @@
 use crate::{
     input_poll::{InputSnapshot, PollerContext, POLLER},
     net::{
-        is_in_valid_online_game, is_valid_online_mode, latency_slider::LATENCY_SLIDER_MANAGER,
+        is_in_valid_online_game, is_valid_online_mode, latency_slider::LatencySliderManager,
         pia::StationExt,
     },
-    render::profile::RENDER_PROFILE_MANAGER,
+    render::profile::RenderProfileManager,
     utils::is_emulator,
 };
 use imgui_api::bindings::*;
@@ -163,14 +163,14 @@ fn poll_selected_setting(input_snapshot: &InputSnapshot) {
     }
     match SELECTED_TABLE_ROW.load(Ordering::SeqCst) {
         ROW_NET_LATENCY => {
-            LATENCY_SLIDER_MANAGER.poll(
+            LatencySliderManager::instance().poll(
                 input_snapshot,
                 ninput::Buttons::LEFT,
                 ninput::Buttons::RIGHT,
             );
         }
         ROW_RENDER_PROFILE => {
-            RENDER_PROFILE_MANAGER.poll(
+            RenderProfileManager::instance().poll(
                 input_snapshot,
                 ninput::Buttons::LEFT,
                 ninput::Buttons::RIGHT,
@@ -266,9 +266,9 @@ unsafe fn draw_interact_table(first_col_width: f32) {
         IMGUI_INTERACT_TABLE_ROW_NAME_STRS[ROW_NET_LATENCY],
     );
     if is_valid_online_mode {
-        let latency = LATENCY_SLIDER_MANAGER
+        let latency = LatencySliderManager::instance()
             .active_latency()
-            .unwrap_or_else(|| LATENCY_SLIDER_MANAGER.selected_latency());
+            .unwrap_or_else(|| LatencySliderManager::instance().selected_latency());
         let slider_val = as_imgui_text(latency.to_string());
         draw_text_cell(&slider_val);
     } else {
@@ -290,10 +290,10 @@ unsafe fn draw_interact_table(first_col_width: f32) {
     );
     if is_valid_online_mode {
         let rp = match is_in_valid_online_game() {
-            true => RENDER_PROFILE_MANAGER.active_render_profile(),
-            false => RENDER_PROFILE_MANAGER.selected_render_profile(),
+            true => RenderProfileManager::active_render_profile(),
+            false => RenderProfileManager::instance().selected_render_profile(),
         };
-        let rp_str = match RENDER_PROFILE_MANAGER.is_auto_mode() {
+        let rp_str = match RenderProfileManager::instance().is_auto_mode() {
             true => format!("Auto({})", rp),
             false => rp.to_string(),
         };
@@ -463,11 +463,11 @@ unsafe fn draw_debug_table(first_col_width: f32) {
 
     draw_row_str(
         "Active Profile\0",
-        Some(RENDER_PROFILE_MANAGER.active_render_profile().to_string()),
+        Some(RenderProfileManager::active_render_profile().to_string()),
     );
     draw_row_str(
         "Active Latency\0",
-        LATENCY_SLIDER_MANAGER
+        LatencySliderManager::instance()
             .active_latency()
             .and_then(|v| Some(v.to_string())),
     );

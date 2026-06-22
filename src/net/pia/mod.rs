@@ -12,13 +12,19 @@ use ssbu_pia_interface::{
 
 use crate::{
     net::{
-        is_in_real_game,
-        latency_slider::{Latency, LATENCY_SLIDER_MANAGER},
+        is_in_real_game, is_valid_online_mode,
+        latency_slider::{Latency, LatencySliderManager},
     },
-    render::profile::{RenderProfile, RenderProfileSettings, RENDER_PROFILE_MANAGER},
+    render::profile::{RenderProfile, RenderProfileManager, RenderProfileSettings},
 };
 
-const PIA_CUSTOM_COMMS_VERSION: u8 = 2;
+const PIA_CUSTOM_COMMS_VERSION: u8 = 3;
+
+#[derive(Debug)]
+enum PiaCommsError {
+    VersionMismatch,
+    InvalidData,
+}
 
 static CONNECTED_STATION_TABLE_SYNCED_INTERNAL: LazyLock<Mutex<Vec<StationNetInfo>>> =
     LazyLock::new(|| Mutex::new(Vec::with_capacity(8)));
@@ -90,6 +96,21 @@ impl StationExt for ConnectedStation {
     }
 }
 
+fn normalize_and_parse_data(data: &[u8]) -> Result<PiaCustomNetPacket, PiaCommsError> {
+    let mut data = match PiaCustomNetPacket::read_from_bytes(data) {
+        Ok(data) => data,
+        Err(_) => return Err(PiaCommsError::InvalidData),
+    };
+    if data.version == PIA_CUSTOM_COMMS_VERSION {
+        return Ok(data);
+    } else if data.version == 2 {
+        data.render_profile_settings_bits &= !(1 << 14);
+        data.render_profile_settings_bits &= !(1 << 15);
+        return Ok(data);
+    }
+    return Err(PiaCommsError::VersionMismatch);
+}
+
 fn on_station_connection_changed(
     event: ConnectionChangedEvent,
     station: ConnectedStation,
@@ -114,17 +135,18 @@ fn on_station_connection_changed(
 
     CONNECTED_STATION_TABLE_ATOMIC_VIEW.store(Arc::new(stations_table.clone()));
 
-    RENDER_PROFILE_MANAGER.auto_select_profile(new_num_connected);
+    RenderProfileManager::instance()
+        .auto_select_profile(is_valid_online_mode(), new_num_connected > 1);
 }
 
 fn send_pia_data_hook(_station: ConnectedStation, data: &mut [u8]) {
-    let latency_bits = LATENCY_SLIDER_MANAGER
+    let latency_bits = LatencySliderManager::instance()
         .active_latency()
-        .unwrap_or(LATENCY_SLIDER_MANAGER.selected_latency())
+        .unwrap_or_else(|| LatencySliderManager::instance().selected_latency())
         .to_bits();
     let rps_bits = match is_in_real_game() {
-        false => RENDER_PROFILE_MANAGER.selected_render_profile_settings(),
-        true => RENDER_PROFILE_MANAGER.active_render_profile_settings(),
+        false => RenderProfileManager::instance().selected_render_profile_settings(),
+        true => RenderProfileManager::active_render_profile_settings(),
     }
     .to_bits();
     let payload = PiaCustomNetPacket {
@@ -132,31 +154,25 @@ fn send_pia_data_hook(_station: ConnectedStation, data: &mut [u8]) {
         latency_bits: latency_bits,
         render_profile_settings_bits: rps_bits,
     };
-    data[0..4].copy_from_slice(payload.as_bytes());
+    data.copy_from_slice(payload.as_bytes());
 }
 
 fn receive_pia_data_hook(station: ConnectedStation, data: &[u8]) {
     let id = station.get_id();
     let stations_table = CONNECTED_STATION_TABLE_ATOMIC_VIEW.load();
     if let Some(station) = stations_table.iter().find(|s| s.id == id) {
-        let data = match PiaCustomNetPacket::ref_from_bytes(&data[0..4]) {
-            Ok(data) => data,
-            Err(_) => return,
-        };
-        let is_version_match = data.version == PIA_CUSTOM_COMMS_VERSION;
-        station
-            .is_valid_comms
-            .store(is_version_match, Ordering::SeqCst);
-        if !is_version_match {
-            println!("Detected incoming custom data, but incompatible custom pia network version!");
-            return;
+        match normalize_and_parse_data(data) {
+            Ok(d) => {
+                station.is_valid_comms.store(true, Ordering::SeqCst);
+                station.latency_bits.store(d.latency_bits, Ordering::SeqCst);
+                station
+                    .render_profile_settings_bits
+                    .store(d.render_profile_settings_bits, Ordering::SeqCst);
+            }
+            Err(e) => {
+                println!("Error parsing incoming data: {:?}", e);
+            }
         }
-        station
-            .latency_bits
-            .store(data.latency_bits, Ordering::SeqCst);
-        station
-            .render_profile_settings_bits
-            .store(data.render_profile_settings_bits, Ordering::SeqCst);
     }
 }
 
