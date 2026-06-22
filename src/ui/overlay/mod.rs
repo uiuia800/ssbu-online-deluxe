@@ -19,6 +19,7 @@ static IMGUI_EMPTY_CELL_STR: &str = "---\0";
 static IMGUI_INTERACT_TABLE_ROW_NAME_STRS: [&str; 4] =
     ["Name\0", "Ping\0", "NetLatency\0", "NetProfile\0"];
 static IMGUI_WINDOW_TITLE: &str = "Player Info\0";
+static IMGUI_HIDDEN_WINDOW_TITLE: &str = "##overlay_hidden\0";
 static IMGUI_PLAYER_NAME: &str = "You\0";
 static IMGUI_TABLE_ID: &str = "conn_player_info\0";
 static IMGUI_FPS_TABLE_ID: &str = "fps_info\0";
@@ -112,6 +113,55 @@ unsafe fn draw_text_cell(text: &str) {
 
 unsafe fn draw_empty_cell() {
     draw_text_cell(IMGUI_EMPTY_CELL_STR);
+}
+
+unsafe fn draw_hidden_workaround_window() {
+    igPushStyleVar_Float(ImGuiStyleVar_WindowBorderSize as i32, 0.0);
+    igPushStyleVar_Vec2(
+        ImGuiStyleVar_WindowPadding as i32,
+        ImVec2 { x: 0.0, y: 0.0 },
+    );
+    igPushStyleVar_Vec2(
+        ImGuiStyleVar_WindowMinSize as i32,
+        ImVec2 { x: 0.0, y: 0.0 },
+    );
+    igSetNextWindowPos(
+        ImVec2 { x: 0.0, y: 0.0 },
+        ImGuiCond_Always as i32,
+        ImVec2 { x: 0.0, y: 0.0 },
+    );
+    igSetNextWindowSize(ImVec2 { x: 1.0, y: 1.0 }, ImGuiCond_Always as i32);
+    igSetNextWindowBgAlpha(0.0);
+    let began = igBegin(
+        IMGUI_HIDDEN_WINDOW_TITLE.as_ptr() as _,
+        std::ptr::null_mut() as _,
+        (ImGuiWindowFlags_NoInputs
+            | ImGuiWindowFlags_NoNav
+            | ImGuiWindowFlags_NoBackground
+            | ImGuiWindowFlags_NoDecoration
+            | ImGuiWindowFlags_NoSavedSettings
+            | ImGuiWindowFlags_NoBringToFrontOnFocus
+            | ImGuiWindowFlags_NoFocusOnAppearing) as i32,
+    );
+    if began {
+        let draw_list = igGetWindowDrawList();
+        if !draw_list.is_null() {
+            let p = igGetWindowPos();
+            ImDrawList_AddRectFilled(
+                draw_list,
+                ImVec2 { x: p.x, y: p.y },
+                ImVec2 {
+                    x: p.x + 1.0,
+                    y: p.y + 1.0,
+                },
+                0x01000000,
+                0.0,
+                0,
+            );
+        }
+    }
+    igEnd();
+    igPopStyleVar(3);
 }
 
 unsafe fn begin_table_row(row_idx: usize, label: &str) {
@@ -523,6 +573,8 @@ unsafe extern "C" fn draw() {
 
     let window_state = WINDOW_STATE.load(Ordering::SeqCst);
     if window_state == WINDOW_STATE_HIDDEN {
+        // Workaround: submit a invisible window to avoid draw hook spam when no draw calls submitted.
+        draw_hidden_workaround_window();
         return;
     }
 
