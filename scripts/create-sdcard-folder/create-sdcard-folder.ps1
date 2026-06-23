@@ -108,6 +108,32 @@ function Normalize-MatchPath
     return ($PathText -replace "\\", "/").TrimStart(".", "/").ToLowerInvariant()
 }
 
+function Get-RelativePathCompat
+{
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BasePath,
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPath
+    )
+
+    $baseFull = [System.IO.Path]::GetFullPath($BasePath)
+    $targetFull = [System.IO.Path]::GetFullPath($TargetPath)
+
+    try
+    {
+        return [System.IO.Path]::GetRelativePath($baseFull, $targetFull)
+    } catch
+    {
+        # Windows PowerShell 5.1 runs on .NET Framework where Path.GetRelativePath is unavailable.
+        $baseUri = [System.Uri]::new(($baseFull.TrimEnd([char[]]@([char]'\', [char]'/')) + [System.IO.Path]::DirectorySeparatorChar))
+        $targetUri = [System.Uri]::new($targetFull)
+        $relativeUri = $baseUri.MakeRelativeUri($targetUri)
+        $relativePath = [System.Uri]::UnescapeDataString($relativeUri.ToString())
+        return $relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar
+    }
+}
+
 function Resolve-OutputDirectory
 {
     param(
@@ -287,7 +313,7 @@ foreach ($repoEntry in $Repos)
 
                     foreach ($item in $extractedFiles)
                     {
-                        $relativePath = [System.IO.Path]::GetRelativePath($extractDir, $item.FullName)
+                        $relativePath = Get-RelativePathCompat -BasePath $extractDir -TargetPath $item.FullName
                         $relativeNorm = Normalize-MatchPath -PathText $relativePath
                         $nameNorm = Normalize-MatchPath -PathText $item.Name
 
