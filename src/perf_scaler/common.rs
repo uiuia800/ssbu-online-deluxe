@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use skyline::hooks::InlineCtx;
 use smashline::{
     skyline_smash::{
         app::{
@@ -78,13 +79,16 @@ unsafe extern "C" fn global_camera_zoom_state_fighter_frame(fighter: &mut L2CFig
     }
 }
 
-#[skyline::hook(replace=app::sv_animcmd::EFFECT_GLOBAL_BACK_GROUND_CUT_IN_CENTER_POS)]
-unsafe fn cut_in_center(lua_state: u64) {
+/*
+ * Hooks into app::sv_animcmd::EFFECT_GLOBAL_BACK_GROUND_CUT_IN_CENTER_POS.
+ * We inline hook here to avoid conflict with HDR or other mods using the same function
+ */
+#[skyline::hook(offset = 0x228f8c0, inline)]
+unsafe fn cut_in_center(_: &InlineCtx) {
     if !CRITICAL_ATTACK_LANDED.swap(true, Ordering::SeqCst) {
         println!("[CRITICAL_HIT_DRS] intensive_frame_start");
         push_dynamic_res_report();
     }
-    call_original!(lua_state);
 }
 
 pub fn install() {

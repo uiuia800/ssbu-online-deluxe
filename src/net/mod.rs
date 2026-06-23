@@ -206,7 +206,7 @@ pub fn is_in_valid_online_game() -> bool {
     is_valid_online_mode() && is_in_real_game() && is_connected()
 }
 
-#[skyline::hook(offset = 0x25d8e18, inline)]
+#[skyline::hook(offset = 0x25d8e38, inline)]
 unsafe fn on_stage_presetup(ctx: &InlineCtx) {
     let stage_base = ctx.registers[0].x();
     let stage_id = *((stage_base + 8) as *mut u32);
