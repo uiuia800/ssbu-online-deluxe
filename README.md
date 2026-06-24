@@ -34,7 +34,7 @@ A performance and online enhancement mod for **Super Smash Bros. Ultimate** that
 ### Automatic Installation
 
 Console:
-- Run `create-sdcard-folder.ps1` powershell script (On Windows: Right click -> Run with Powershell). It will download and setup the atmosphere folder for you in a newly created folder `sdcard/`.
+- From the releases page, download `create-sdcard-folder.zip` and then run `create-sdcard-folder.bat`. On linux, you can install powershell for your distro and run `create-sdcard-folder.ps1`. It will download and setup the atmosphere folder for you in a newly created folder `sdcard/`.
 - Then copy the contents of `sdcard/` to the root of your SD card.
 
 Emulator:
