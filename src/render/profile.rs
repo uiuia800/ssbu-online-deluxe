@@ -453,15 +453,40 @@ impl RenderProfileManager {
         );
     }
     fn apply_render_profile_settings_immediate(rps: &RenderProfileSettings) {
+        let is_emulator = is_emulator();
+
+        // apply resolution
         let _ = sync_guest::set_default_game_resolution_level(rps.default_resolution_level);
         let _ = sync_guest::set_dynamic_resolution_enabled(rps.dynamic_res_enabled);
-        let _ = sync_guest::set_vsync_enabled(rps.vsync_enabled);
-        let _ = sync_guest::set_render_opts_enabled(rps.render_opts_enabled);
-        let _ = sync_guest::set_buffer_mode(rps.buffer_mode);
-        let _ = sync_guest::set_index_mode(rps.index_mode);
-        if is_emulator() {
-            sync_guest::set_fps_boost_enabled(rps.boost_enabled);
-        } else {
+
+        // apply render options
+        if let Some(env_flags) = sync_guest::env_flags() {
+            let flags = env_flags
+                .with(
+                    sync_guest::EnvironmentFlags::FPS_BOOST_ENABLED,
+                    rps.boost_enabled && is_emulator,
+                )
+                .with(
+                    sync_guest::EnvironmentFlags::VSYNC_ENABLED,
+                    rps.vsync_enabled,
+                )
+                .with(
+                    sync_guest::EnvironmentFlags::RENDER_OPTS_ENABLED,
+                    rps.render_opts_enabled,
+                )
+                .with(
+                    sync_guest::EnvironmentFlags::TRIPLE_ENABLED,
+                    rps.buffer_mode == BufferMode::Triple,
+                )
+                .with_value(
+                    sync_guest::EnvironmentFlags::INDEX_MODE,
+                    rps.index_mode as u32,
+                );
+            let _ = sync_guest::replace_env_flags(flags);
+        }
+
+        // set overclock profile
+        if !is_emulator {
             let oc_profile = match (RenderProfile::from_settings(&rps).preset, is_in_game()) {
                 (_, false) => DockedProfile::Rest,
                 (
